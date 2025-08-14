@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { ClientFeedback, SatisfactionLevel } from '../types';
 import { StarIcon } from '../constants';
+import { DataService } from '../services/dataService';
 
 interface PublicFeedbackFormProps {
     setClientFeedback: React.Dispatch<React.SetStateAction<ClientFeedback[]>>;
@@ -42,7 +43,6 @@ const PublicFeedbackForm: React.FC<PublicFeedbackFormProps> = ({ setClientFeedba
         setIsSubmitting(true);
 
         const newFeedback: ClientFeedback = {
-            id: `FB-PUB-${Date.now()}`,
             clientName: formState.clientName,
             rating: formState.rating,
             satisfaction: getSatisfactionFromRating(formState.rating),
@@ -50,8 +50,19 @@ const PublicFeedbackForm: React.FC<PublicFeedbackFormProps> = ({ setClientFeedba
             date: new Date().toISOString(),
         };
 
-        setTimeout(() => {
-            setClientFeedback(prev => [newFeedback, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+        setTimeout(async () => {
+            try {
+              await DataService.createTableItem('client_feedback', {
+                client_name: newFeedback.clientName,
+                rating: newFeedback.rating,
+                satisfaction: newFeedback.satisfaction,
+                feedback: newFeedback.feedback,
+                date: newFeedback.date.split('T')[0]
+              });
+              setClientFeedback(prev => [{ ...newFeedback, id: `FB-PUB-${Date.now()}` }, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+            } catch (error) {
+              console.error('Error saving feedback:', error);
+            }
             setIsSubmitting(false);
             setIsSubmitted(true);
         }, 1000);

@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Lead, LeadStatus, ContactChannel, Profile } from '../types';
+import { DataService } from '../services/dataService';
 
 interface PublicLeadFormProps {
     setLeads: React.Dispatch<React.SetStateAction<Lead[]>>;
@@ -34,7 +35,6 @@ const PublicLeadForm: React.FC<PublicLeadFormProps> = ({ setLeads, userProfile }
         const notes = `Jenis Acara: ${formState.eventType}\nTanggal Acara: ${new Date(formState.eventDate).toLocaleDateString('id-ID')}\nLokasi Acara: ${formState.eventLocation}`;
 
         const newLead: Lead = {
-            id: `LEAD-FORM-${Date.now()}`,
             name: formState.name,
             contactChannel: ContactChannel.WEBSITE, // Since it's from a web form
             location: formState.eventLocation,
@@ -43,9 +43,21 @@ const PublicLeadForm: React.FC<PublicLeadFormProps> = ({ setLeads, userProfile }
             notes: notes
         };
         
-        // Simulate API call
-        setTimeout(() => {
-            setLeads(prev => [newLead, ...prev]);
+        // Save to Supabase
+        setTimeout(async () => {
+            try {
+              await DataService.createTableItem('leads', {
+                name: newLead.name,
+                contact_channel: newLead.contactChannel,
+                location: newLead.location,
+                status: newLead.status,
+                date: newLead.date,
+                notes: newLead.notes
+              });
+              setLeads(prev => [{ ...newLead, id: `LEAD-FORM-${Date.now()}` }, ...prev]);
+            } catch (error) {
+              console.error('Error saving lead:', error);
+            }
             setIsSubmitting(false);
             setIsSubmitted(true);
         }, 1000);

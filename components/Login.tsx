@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { User } from '../types';
+import { DataService } from '../services/dataService';
 
 const UserIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -41,16 +42,20 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, users }) => {
         setError('');
         setIsLoading(true);
 
-        // Simulate API call
-        setTimeout(() => {
-            const user = users.find(u => u.email === email && u.password === password);
+        // Authenticate with Supabase
+        DataService.getTableData<User>('users').then(usersData => {
+            const user = usersData.find(u => u.email === email && u.password === password);
             if (user) {
                 onLoginSuccess(user);
             } else {
                 setError('Username atau kata sandi salah.');
             }
             setIsLoading(false);
-        }, 1000);
+        }).catch(error => {
+            console.error('Login error:', error);
+            setError('Terjadi kesalahan saat login.');
+            setIsLoading(false);
+        });
     };
 
     return (

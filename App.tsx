@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ViewType, Client, Project, TeamMember, Transaction, Package, AddOn, TeamProjectPayment, Profile, FinancialPocket, TeamPaymentRecord, Lead, RewardLedgerEntry, User, Card, Asset, ClientFeedback, Contract, RevisionStatus, NavigationAction, Notification, SocialMediaPost, PromoCode, SOP } from './types';
-import { MOCK_CLIENTS, MOCK_PROJECTS, MOCK_TEAM_MEMBERS, MOCK_TRANSACTIONS, MOCK_PACKAGES, MOCK_ADDONS, MOCK_TEAM_PROJECT_PAYMENTS, MOCK_USER_PROFILE, MOCK_FINANCIAL_POCKETS, MOCK_TEAM_PAYMENT_RECORDS, MOCK_LEADS, MOCK_REWARD_LEDGER_ENTRIES, MOCK_USERS, MOCK_CARDS, MOCK_ASSETS, MOCK_CLIENT_FEEDBACK, MOCK_CONTRACTS, MOCK_NOTIFICATIONS, MOCK_SOCIAL_MEDIA_POSTS, MOCK_PROMO_CODES, MOCK_SOPS, HomeIcon, FolderKanbanIcon, UsersIcon, DollarSignIcon, PlusIcon } from './constants';
+import { HomeIcon, FolderKanbanIcon, UsersIcon, DollarSignIcon, PlusIcon } from './constants';
+import { DataService } from './services/dataService';
+import { useProfile } from './hooks/useSupabase';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import Leads from './components/Leads';
@@ -102,12 +104,16 @@ const FloatingActionButton: React.FC<{ onAddClick: (type: string) => void }> = (
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [activeView, setActiveView] = useState<ViewType>(ViewType.DASHBOARD);
   const [notification, setNotification] = useState<string>('');
   const [initialAction, setInitialAction] = useState<NavigationAction | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [route, setRoute] = useState(window.location.hash);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  // Use Supabase profile hook
+  const { profile, loading: profileLoading, updateProfile } = useProfile();
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -117,28 +123,105 @@ const App: React.FC = () => {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  // Lifted State for global management and integration
-  const [users, setUsers] = useState<User[]>(() => JSON.parse(JSON.stringify(MOCK_USERS)));
-  const [clients, setClients] = useState<Client[]>(() => JSON.parse(JSON.stringify(MOCK_CLIENTS)));
-  const [projects, setProjects] = useState<Project[]>(() => JSON.parse(JSON.stringify(MOCK_PROJECTS)));
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>(() => JSON.parse(JSON.stringify(MOCK_TEAM_MEMBERS)));
-  const [transactions, setTransactions] = useState<Transaction[]>(() => JSON.parse(JSON.stringify(MOCK_TRANSACTIONS)));
-  const [packages, setPackages] = useState<Package[]>(() => JSON.parse(JSON.stringify(MOCK_PACKAGES)));
-  const [addOns, setAddOns] = useState<AddOn[]>(() => JSON.parse(JSON.stringify(MOCK_ADDONS)));
-  const [teamProjectPayments, setTeamProjectPayments] = useState<TeamProjectPayment[]>(() => JSON.parse(JSON.stringify(MOCK_TEAM_PROJECT_PAYMENTS)));
-  const [teamPaymentRecords, setTeamPaymentRecords] = useState<TeamPaymentRecord[]>(() => JSON.parse(JSON.stringify(MOCK_TEAM_PAYMENT_RECORDS)));
-  const [pockets, setPockets] = useState<FinancialPocket[]>(() => JSON.parse(JSON.stringify(MOCK_FINANCIAL_POCKETS)));
-  const [profile, setProfile] = useState<Profile>(() => JSON.parse(JSON.stringify(MOCK_USER_PROFILE)));
-  const [leads, setLeads] = useState<Lead[]>(() => JSON.parse(JSON.stringify(MOCK_LEADS)));
-  const [rewardLedgerEntries, setRewardLedgerEntries] = useState<RewardLedgerEntry[]>(() => JSON.parse(JSON.stringify(MOCK_REWARD_LEDGER_ENTRIES)));
-  const [cards, setCards] = useState<Card[]>(() => JSON.parse(JSON.stringify(MOCK_CARDS)));
-  const [assets, setAssets] = useState<Asset[]>(() => JSON.parse(JSON.stringify(MOCK_ASSETS)));
-  const [contracts, setContracts] = useState<Contract[]>(() => JSON.parse(JSON.stringify(MOCK_CONTRACTS)));
-  const [clientFeedback, setClientFeedback] = useState<ClientFeedback[]>(() => JSON.parse(JSON.stringify(MOCK_CLIENT_FEEDBACK)));
-  const [notifications, setNotifications] = useState<Notification[]>(() => JSON.parse(JSON.stringify(MOCK_NOTIFICATIONS)));
-  const [socialMediaPosts, setSocialMediaPosts] = useState<SocialMediaPost[]>(() => JSON.parse(JSON.stringify(MOCK_SOCIAL_MEDIA_POSTS)));
-  const [promoCodes, setPromoCodes] = useState<PromoCode[]>(() => JSON.parse(JSON.stringify(MOCK_PROMO_CODES)));
-  const [sops, setSops] = useState<SOP[]>(() => JSON.parse(JSON.stringify(MOCK_SOPS)));
+  // State for all data from Supabase
+  const [users, setUsers] = useState<User[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [packages, setPackages] = useState<Package[]>([]);
+  const [addOns, setAddOns] = useState<AddOn[]>([]);
+  const [teamProjectPayments, setTeamProjectPayments] = useState<TeamProjectPayment[]>([]);
+  const [teamPaymentRecords, setTeamPaymentRecords] = useState<TeamPaymentRecord[]>([]);
+  const [pockets, setPockets] = useState<FinancialPocket[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [rewardLedgerEntries, setRewardLedgerEntries] = useState<RewardLedgerEntry[]>([]);
+  const [cards, setCards] = useState<Card[]>([]);
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [clientFeedback, setClientFeedback] = useState<ClientFeedback[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [socialMediaPosts, setSocialMediaPosts] = useState<SocialMediaPost[]>([]);
+  const [promoCodes, setPromoCodes] = useState<PromoCode[]>([]);
+  const [sops, setSops] = useState<SOP[]>([]);
+
+  // Load all data from Supabase on app start
+  useEffect(() => {
+    const loadAllData = async () => {
+      try {
+        setIsLoading(true);
+        
+        // Load all data in parallel
+        const [
+          usersData,
+          clientsData,
+          projectsData,
+          teamMembersData,
+          transactionsData,
+          packagesData,
+          addOnsData,
+          cardsData,
+          pocketsData,
+          leadsData,
+          assetsData,
+          contractsData,
+          feedbackData,
+          socialPostsData,
+          promoCodesData,
+          sopsData,
+          notificationsData
+        ] = await Promise.all([
+          DataService.getTableData<User>('users'),
+          DataService.getClients(),
+          DataService.getProjects(),
+          DataService.getTableData<TeamMember>('team_members'),
+          DataService.getTableData<Transaction>('transactions'),
+          DataService.getTableData<Package>('packages'),
+          DataService.getTableData<AddOn>('add_ons'),
+          DataService.getTableData<Card>('cards'),
+          DataService.getTableData<FinancialPocket>('financial_pockets'),
+          DataService.getTableData<Lead>('leads'),
+          DataService.getTableData<Asset>('assets'),
+          DataService.getTableData<Contract>('contracts'),
+          DataService.getTableData<ClientFeedback>('client_feedback'),
+          DataService.getTableData<SocialMediaPost>('social_media_posts'),
+          DataService.getTableData<PromoCode>('promo_codes'),
+          DataService.getTableData<SOP>('sops'),
+          DataService.getTableData<Notification>('notifications')
+        ]);
+
+        setUsers(usersData);
+        setClients(clientsData);
+        setProjects(projectsData);
+        setTeamMembers(teamMembersData);
+        setTransactions(transactionsData);
+        setPackages(packagesData);
+        setAddOns(addOnsData);
+        setCards(cardsData);
+        setPockets(pocketsData);
+        setLeads(leadsData);
+        setAssets(assetsData);
+        setContracts(contractsData);
+        setClientFeedback(feedbackData);
+        setSocialMediaPosts(socialPostsData);
+        setPromoCodes(promoCodesData);
+        setSops(sopsData);
+        setNotifications(notificationsData);
+        
+        // TODO: Load other related data like team payments, etc.
+        
+      } catch (error) {
+        console.error('Error loading data:', error);
+        showNotification('Gagal memuat data dari database.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (isAuthenticated) {
+      loadAllData();
+    }
+  }, [isAuthenticated]);
 
   const showNotification = (message: string, duration: number = 3000) => {
     setNotification(message);
@@ -177,106 +260,178 @@ const App: React.FC = () => {
   };
 
   const handleUpdateRevision = (projectId: string, revisionId: string, updatedData: { freelancerNotes: string, driveLink: string, status: RevisionStatus }) => {
-    setProjects(prevProjects => {
-        return prevProjects.map(p => {
-            if (p.id === projectId) {
-                const updatedRevisions = (p.revisions || []).map(r => {
-                    if (r.id === revisionId) {
-                        return { 
-                            ...r, 
-                            freelancerNotes: updatedData.freelancerNotes,
-                            driveLink: updatedData.driveLink,
-                            status: updatedData.status,
-                            completedDate: updatedData.status === RevisionStatus.COMPLETED ? new Date().toISOString() : r.completedDate,
-                        };
-                    }
-                    return r;
-                });
-                return { ...p, revisions: updatedRevisions };
-            }
-            return p;
-        });
+    // Update revision in Supabase
+    DataService.updateTableItem('revisions', revisionId, {
+      freelancer_notes: updatedData.freelancerNotes,
+      drive_link: updatedData.driveLink,
+      status: updatedData.status,
+      completed_date: updatedData.status === RevisionStatus.COMPLETED ? new Date().toISOString().split('T')[0] : null,
+    }).then(() => {
+      // Update local state
+      setProjects(prevProjects => {
+          return prevProjects.map(p => {
+              if (p.id === projectId) {
+                  const updatedRevisions = (p.revisions || []).map(r => {
+                      if (r.id === revisionId) {
+                          return { 
+                              ...r, 
+                              freelancerNotes: updatedData.freelancerNotes,
+                              driveLink: updatedData.driveLink,
+                              status: updatedData.status,
+                              completedDate: updatedData.status === RevisionStatus.COMPLETED ? new Date().toISOString() : r.completedDate,
+                          };
+                      }
+                      return r;
+                  });
+                  return { ...p, revisions: updatedRevisions };
+              }
+              return p;
+          });
+      });
+    }).catch(error => {
+      console.error('Error updating revision:', error);
+      showNotification('Gagal memperbarui revisi.');
     });
     showNotification("Update revisi telah berhasil dikirim.");
   };
 
     const handleClientConfirmation = (projectId: string, stage: 'editing' | 'printing' | 'delivery') => {
-        setProjects(prevProjects => {
-            return prevProjects.map(p => {
-                if (p.id === projectId) {
-                    const updatedProject = { ...p };
-                    if (stage === 'editing') updatedProject.isEditingConfirmedByClient = true;
-                    if (stage === 'printing') updatedProject.isPrintingConfirmedByClient = true;
-                    if (stage === 'delivery') updatedProject.isDeliveryConfirmedByClient = true;
-                    return updatedProject;
-                }
-                return p;
-            });
+        const updates: any = {};
+        if (stage === 'editing') updates.is_editing_confirmed_by_client = true;
+        if (stage === 'printing') updates.is_printing_confirmed_by_client = true;
+        if (stage === 'delivery') updates.is_delivery_confirmed_by_client = true;
+        
+        DataService.updateTableItem('projects', projectId, updates).then(() => {
+          setProjects(prevProjects => {
+              return prevProjects.map(p => {
+                  if (p.id === projectId) {
+                      const updatedProject = { ...p };
+                      if (stage === 'editing') updatedProject.isEditingConfirmedByClient = true;
+                      if (stage === 'printing') updatedProject.isPrintingConfirmedByClient = true;
+                      if (stage === 'delivery') updatedProject.isDeliveryConfirmedByClient = true;
+                      return updatedProject;
+                  }
+                  return p;
+              });
+          });
+        }).catch(error => {
+          console.error('Error updating project confirmation:', error);
+          showNotification('Gagal memperbarui konfirmasi.');
         });
         showNotification("Konfirmasi telah diterima. Terima kasih!");
     };
     
     const handleClientSubStatusConfirmation = (projectId: string, subStatusName: string, note: string) => {
         let project: Project | undefined;
-        setProjects(prevProjects => {
-            const updatedProjects = prevProjects.map(p => {
-                if (p.id === projectId) {
-                    const confirmed = [...(p.confirmedSubStatuses || []), subStatusName];
-                    const notes = { ...(p.clientSubStatusNotes || {}), [subStatusName]: note };
-                    project = { ...p, confirmedSubStatuses: confirmed, clientSubStatusNotes: notes };
-                    return project;
-                }
-                return p;
+        
+        const currentProject = projects.find(p => p.id === projectId);
+        if (currentProject) {
+          const confirmed = [...(currentProject.confirmedSubStatuses || []), subStatusName];
+          const notes = { ...(currentProject.clientSubStatusNotes || {}), [subStatusName]: note };
+          
+          DataService.updateTableItem('projects', projectId, {
+            confirmed_sub_statuses: confirmed,
+            client_sub_status_notes: notes
+          }).then(() => {
+            setProjects(prevProjects => {
+                const updatedProjects = prevProjects.map(p => {
+                    if (p.id === projectId) {
+                        project = { ...p, confirmedSubStatuses: confirmed, clientSubStatusNotes: notes };
+                        return project;
+                    }
+                    return p;
+                });
+                return updatedProjects;
             });
-            return updatedProjects;
-        });
+          }).catch(error => {
+            console.error('Error updating sub-status confirmation:', error);
+            showNotification('Gagal memperbarui konfirmasi sub-status.');
+          });
+        }
     
         if (project) {
-            const newNotification: Notification = {
-                id: `NOTIF-NOTE-${Date.now()}`,
-                title: 'Catatan Klien Baru',
-                message: `Klien ${project.clientName} memberikan catatan pada sub-status "${subStatusName}" di proyek "${project.projectName}".`,
-                timestamp: new Date().toISOString(),
-                isRead: false,
-                icon: 'comment',
+            // Create notification in Supabase
+            DataService.createTableItem('notifications', {
+              title: 'Catatan Klien Baru',
+              message: `Klien ${project.clientName} memberikan catatan pada sub-status "${subStatusName}" di proyek "${project.projectName}".`,
+              timestamp: new Date().toISOString(),
+              is_read: false,
+              icon: 'comment',
+              link_view: ViewType.PROJECTS,
+              link_action: { type: 'VIEW_PROJECT_DETAILS', id: projectId }
+            }).then((newNotification: any) => {
+              const transformedNotification: Notification = {
+                id: newNotification.id,
+                title: newNotification.title,
+                message: newNotification.message,
+                timestamp: newNotification.timestamp,
+                isRead: newNotification.is_read,
+                icon: newNotification.icon,
                 link: {
-                    view: ViewType.PROJECTS,
-                    action: { type: 'VIEW_PROJECT_DETAILS', id: projectId }
+                  view: newNotification.link_view,
+                  action: newNotification.link_action
                 }
-            };
-            setNotifications(prev => [newNotification, ...prev]);
+              };
+              setNotifications(prev => [transformedNotification, ...prev]);
+            }).catch(error => {
+              console.error('Error creating notification:', error);
+            });
         }
     
         showNotification(`Konfirmasi untuk "${subStatusName}" telah diterima.`);
     };
     
     const handleSignContract = (contractId: string, signatureDataUrl: string, signer: 'vendor' | 'client') => {
-        setContracts(prevContracts => {
-            return prevContracts.map(c => {
-                if (c.id === contractId) {
-                    return {
-                        ...c,
-                        ...(signer === 'vendor' ? { vendorSignature: signatureDataUrl } : { clientSignature: signatureDataUrl })
-                    };
-                }
-                return c;
-            });
+        const updates = signer === 'vendor' 
+          ? { vendor_signature: signatureDataUrl }
+          : { client_signature: signatureDataUrl };
+          
+        DataService.updateTableItem('contracts', contractId, updates).then(() => {
+          setContracts(prevContracts => {
+              return prevContracts.map(c => {
+                  if (c.id === contractId) {
+                      return {
+                          ...c,
+                          ...(signer === 'vendor' ? { vendorSignature: signatureDataUrl } : { clientSignature: signatureDataUrl })
+                      };
+                  }
+                  return c;
+              });
+          });
+        }).catch(error => {
+          console.error('Error signing contract:', error);
+          showNotification('Gagal menyimpan tanda tangan.');
         });
         showNotification('Tanda tangan berhasil disimpan.');
     };
     
     const handleSignInvoice = (projectId: string, signatureDataUrl: string) => {
-        setProjects(prev => prev.map(p => p.id === projectId ? { ...p, invoiceSignature: signatureDataUrl } : p));
+        DataService.updateTableItem('projects', projectId, { invoice_signature: signatureDataUrl }).then(() => {
+          setProjects(prev => prev.map(p => p.id === projectId ? { ...p, invoiceSignature: signatureDataUrl } : p));
+        }).catch(error => {
+          console.error('Error signing invoice:', error);
+          showNotification('Gagal menyimpan tanda tangan invoice.');
+        });
         showNotification('Invoice berhasil ditandatangani.');
     };
     
     const handleSignTransaction = (transactionId: string, signatureDataUrl: string) => {
-        setTransactions(prev => prev.map(t => t.id === transactionId ? { ...t, vendorSignature: signatureDataUrl } : t));
+        DataService.updateTableItem('transactions', transactionId, { vendor_signature: signatureDataUrl }).then(() => {
+          setTransactions(prev => prev.map(t => t.id === transactionId ? { ...t, vendorSignature: signatureDataUrl } : t));
+        }).catch(error => {
+          console.error('Error signing transaction:', error);
+          showNotification('Gagal menyimpan tanda tangan transaksi.');
+        });
         showNotification('Kuitansi berhasil ditandatangani.');
     };
     
     const handleSignPaymentRecord = (recordId: string, signatureDataUrl: string) => {
-        setTeamPaymentRecords(prev => prev.map(r => r.id === recordId ? { ...r, vendorSignature: signatureDataUrl } : r));
+        DataService.updateTableItem('team_payment_records', recordId, { vendor_signature: signatureDataUrl }).then(() => {
+          setTeamPaymentRecords(prev => prev.map(r => r.id === recordId ? { ...r, vendorSignature: signatureDataUrl } : r));
+        }).catch(error => {
+          console.error('Error signing payment record:', error);
+          showNotification('Gagal menyimpan tanda tangan slip pembayaran.');
+        });
         showNotification('Slip pembayaran berhasil ditandatangani.');
     };
 
@@ -289,6 +444,27 @@ const App: React.FC = () => {
   };
   
   const renderView = () => {
+    if (isLoading || profileLoading) {
+      return (
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-accent mx-auto mb-4"></div>
+            <p className="text-brand-text-secondary">Memuat data...</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (!profile) {
+      return (
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center">
+            <p className="text-brand-text-secondary">Profil tidak ditemukan. Silakan hubungi administrator.</p>
+          </div>
+        </div>
+      );
+    }
+
     if (!hasPermission(activeView)) {
         return <AccessDenied onBackToDashboard={() => setActiveView(ViewType.DASHBOARD)} />;
     }
@@ -408,7 +584,7 @@ const App: React.FC = () => {
         return <SOPManagement sops={sops} setSops={setSops} profile={profile} showNotification={showNotification} />;
       case ViewType.SETTINGS:
         return <Settings 
-          profile={profile} setProfile={setProfile} 
+          profile={profile} setProfile={updateProfile} 
           transactions={transactions} projects={projects}
           users={users} setUsers={setUsers}
           currentUser={currentUser}

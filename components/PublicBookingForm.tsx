@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { Client, Project, Package, AddOn, Transaction, Profile, Card, FinancialPocket, ClientStatus, PaymentStatus, TransactionType, PromoCode, Lead, LeadStatus, ContactChannel, ClientType } from '../types';
 import Modal from './Modal';
+import { DataService } from '../services/dataService';
 
 interface PublicBookingFormProps {
     setClients: React.Dispatch<React.SetStateAction<Client[]>>;
@@ -240,7 +241,6 @@ const PublicBookingForm: React.FC<PublicBookingFormProps> = ({
         };
         
         const newLead: Lead = {
-            id: `LEAD-FORM-${Date.now()}`,
             name: newClient.name,
             contactChannel: ContactChannel.WEBSITE,
             location: newProject.location,
@@ -249,9 +249,28 @@ const PublicBookingForm: React.FC<PublicBookingFormProps> = ({
             notes: `Dikonversi secara otomatis dari formulir pemesanan publik. Proyek: ${newProject.projectName}. Klien ID: ${newClient.id}`
         };
 
-        setClients(prev => [newClient, ...prev]);
-        setProjects(prev => [newProject, ...prev]);
-        setLeads(prev => [newLead, ...prev]);
+        // Save to Supabase
+        try {
+          const savedClient = await DataService.createClient(newClient);
+          const savedProject = await DataService.createProject({ ...newProject, clientId: savedClient.id });
+          await DataService.createTableItem('leads', {
+            name: newLead.name,
+            contact_channel: newLead.contactChannel,
+            location: newLead.location,
+            status: newLead.status,
+            date: newLead.date,
+            notes: newLead.notes
+          });
+
+          setClients(prev => [savedClient, ...prev]);
+          setProjects(prev => [savedProject, ...prev]);
+          setLeads(prev => [{ ...newLead, id: `LEAD-FORM-${Date.now()}` }, ...prev]);
+        } catch (error) {
+          console.error('Error saving booking:', error);
+          showNotification('Terjadi kesalahan saat menyimpan pemesanan.');
+          setIsSubmitting(false);
+          return;
+        }
 
         if (promoCodeAppliedId) {
             setPromoCodes(prev => prev.map(p => p.id === promoCodeAppliedId ? { ...p, usageCount: p.usageCount + 1 } : p));
@@ -259,16 +278,46 @@ const PublicBookingForm: React.FC<PublicBookingFormProps> = ({
 
         if (dpAmount > 0) {
             const newTransaction: Transaction = {
-                id: `TRN-DP-${newProject.id}`, date: new Date().toISOString().split('T')[0], description: `DP Proyek ${newProject.projectName}`,
+                date: new Date().toISOString().split('T')[0], description: `DP Proyek ${newProject.projectName}`,
                 amount: dpAmount, type: TransactionType.INCOME, projectId: newProject.id, category: 'DP Proyek',
                 method: 'Transfer Bank', cardId: destinationCard.id,
             };
-            setTransactions(prev => [...prev, newTransaction].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-            setCards(prev => prev.map(c => c.id === destinationCard.id ? { ...c, balance: c.balance + dpAmount } : c));
+            
+            try {
+              await DataService.createTableItem('transactions', {
+                date: newTransaction.date,
+                description: newTransaction.description,
+                amount: newTransaction.amount,
+                type: newTransaction.type,
+                project_id: newTransaction.projectId,
+                category: newTransaction.category,
+                method: newTransaction.method,
+                card_id: newTransaction.cardId
+              });
+              
+              await DataService.updateTableItem('cards', destinationCard.id, {
+                balance: destinationCard.balance + dpAmount
+              });
+              
+              setTransactions(prev => [{ ...newTransaction, id: `TRN-DP-${Date.now()}` }, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+              setCards(prev => prev.map(c => c.id === destinationCard.id ? { ...c, balance: c.balance + dpAmount } : c));
+            } catch (error) {
+              console.error('Error saving transaction:', error);
+            }
         }
 
         setIsSubmitting(false);
-        setIsSubmitted(true);
+            try {
+              const promoCode = promoCodes.find(p => p.id === promoCodeAppliedId);
+              if (promoCode) {
+                await DataService.updateTableItem('promo_codes', promoCodeAppliedId, {
+                  usage_count: promoCode.usageCount + 1
+                });
+                setPromoCodes(prev => prev.map(p => p.id === promoCodeAppliedId ? { ...p, usageCount: p.usageCount + 1 } : p));
+              }
+            } catch (error) {
+              console.error('Error updating promo code:', error);
+            }
         showNotification('Pemesanan baru dari klien diterima!');
     };
     
